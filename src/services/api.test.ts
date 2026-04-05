@@ -61,19 +61,4 @@ describe("API Fetch Wrapper", () => {
     expect(result).toEqual({ data: "success" });
     expect(mockFetch).toHaveBeenCalledTimes(2);
   });
-
-  /* it('should timeout if request takes too long', async () => {
-    vi.useFakeTimers();
-    // Mocking fetch to return a promise that we can control
-    mockFetch.mockReturnValue(new Promise(() => {}));
-
-    const promise = api.get('/test', { timeout: 100 });
-    
-    // Fast-forward time
-    vi.advanceTimersByTime(200);
-    
-    // We expect the abort controller to have been triggered
-    await expect(promise).rejects.toThrow();
-    vi.useRealTimers();
-  }); */
 });
