@@ -34,15 +34,20 @@ export const EventSchema = z.object({
   result: ResultSchema,
   correlationId: z.string().optional(),
   entityId: z.string().optional(),
-  details: z.record(z.any()),
+  details: z.record(z.unknown()).optional(),
 });
 
 export type Event = z.infer<typeof EventSchema>;
 
 export const EventFiltersSchema = z.object({
+  startDate: z.string().optional(),
+  endDate: z.string().optional(),
   criticality: CriticalitySchema.optional(),
   result: ResultSchema.optional(),
-  search: z.string().optional(),
+  clientId: z.number().optional(),
+  userId: z.number().optional(),
+  eventType: z.string().optional(),
+  limit: z.number().optional(),
 });
 
 export type EventFilters = z.infer<typeof EventFiltersSchema>;

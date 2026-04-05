@@ -1,11 +1,76 @@
 import { createFileRoute, redirect } from '@tanstack/react-router'
-import { useState, useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { EventDetails } from '../components/dashboard/EventDetails'
+import { EventSidebar } from '../components/dashboard/EventSidebar'
+import { DashboardLayout } from '../components/layout/DashboardLayout'
+import { useAuth } from '../hooks/useAuth'
 import { useEvents } from '../hooks/useEvents'
-import { Criticality } from '../types/event'
+import { CriticalitySchema, ResultSchema } from '../types/event'
+
+type DashboardSearch = {
+  criticality?: 'LOW' | 'MEDIUM' | 'HIGH'
+  result?: 'SUCCESS' | 'FAILURE'
+  clientId?: number
+  userId?: number
+  eventType?: string
+  startDate?: string
+  endDate?: string
+}
 
 export const Route = createFileRoute('/dashboard')({
+  validateSearch: (search) => {
+    const toSingleString = (value: unknown) => {
+      if (typeof value === 'string') return value
+      if (typeof value === 'number' && Number.isFinite(value)) return String(value)
+      if (Array.isArray(value) && typeof value[0] === 'string') return value[0]
+      return undefined
+    }
+
+    const criticalityRaw = toSingleString(search.criticality)
+    const resultRaw = toSingleString(search.result)
+    const clientIdRaw = toSingleString(search.clientId)
+    const userIdRaw = toSingleString(search.userId)
+    const eventTypeRaw = toSingleString(search.eventType)
+    const startDateRaw = toSingleString(search.startDate)
+    const endDateRaw = toSingleString(search.endDate)
+
+    const criticalityParsed = criticalityRaw
+      ? CriticalitySchema.safeParse(criticalityRaw)
+      : null
+    const resultParsed = resultRaw ? ResultSchema.safeParse(resultRaw) : null
+
+    const criticality =
+      criticalityParsed && criticalityParsed.success
+        ? criticalityParsed.data
+        : undefined
+    const result = resultParsed && resultParsed.success ? resultParsed.data : undefined
+
+    const toNumber = (value?: string) => {
+      if (!value) return undefined
+      const parsed = Number(value)
+      return Number.isFinite(parsed) ? parsed : undefined
+    }
+
+    const validated: DashboardSearch = {}
+
+    if (criticality) validated.criticality = criticality
+    if (result) validated.result = result
+
+    const clientId = toNumber(clientIdRaw)
+    const userId = toNumber(userIdRaw)
+    if (clientId !== undefined) validated.clientId = clientId
+    if (userId !== undefined) validated.userId = userId
+
+    if (eventTypeRaw) validated.eventType = eventTypeRaw
+    if (startDateRaw) validated.startDate = startDateRaw
+    if (endDateRaw) validated.endDate = endDateRaw
+
+    return validated
+  },
   beforeLoad: ({ context }) => {
-    if (!context.isAuthenticated) {
+    const isAuthenticated =
+      context.isAuthenticated || !!sessionStorage.getItem('apiKey')
+    if (!isAuthenticated) {
       throw redirect({
         to: '/login',
       })
@@ -15,10 +80,13 @@ export const Route = createFileRoute('/dashboard')({
 })
 
 function DashboardComponent() {
+  const navigate = Route.useNavigate()
+  const search = Route.useSearch()
+  const { logout } = useAuth()
   const [selectedEventId, setSelectedEventId] = useState<number | null>(null)
-  const [criticalityFilter] = useState<Criticality | undefined>()
   const listRef = useRef<HTMLDivElement | null>(null)
   const sentinelRef = useRef<HTMLDivElement | null>(null)
+  const [showFilters, setShowFilters] = useState(false)
   
   const {
     events,
@@ -28,10 +96,9 @@ function DashboardComponent() {
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
-  } = useEvents({ criticality: criticalityFilter })
+  } = useEvents(search)
 
-  const eventsArray = Array.isArray(events) ? events : []
-  const effectiveSelectedEventId = selectedEventId ?? (eventsArray[0]?.id ?? null)
+  const effectiveSelectedEventId = selectedEventId ?? (events[0]?.id ?? null)
 
   useEffect(() => {
     const root = listRef.current
@@ -54,232 +121,188 @@ function DashboardComponent() {
     return () => observer.disconnect()
   }, [fetchNextPage, hasNextPage, isFetchingNextPage])
 
-  const selectedEvent =
-    eventsArray.find((e) => e.id === effectiveSelectedEventId) ?? eventsArray[0]
+  const selectedEvent = useMemo(() => {
+    return events.find((e) => e.id === effectiveSelectedEventId) ?? events[0]
+  }, [effectiveSelectedEventId, events])
 
-  const getRelativeTime = (date?: string) => {
-    if (!date) return 'unknown time'
-    const eventDate = new Date(date)
-    const now = new Date()
-    const diff = now.getTime() - eventDate.getTime()
-    if (isNaN(diff)) return 'invalid date'
-    
-    const minutes = Math.floor(diff / 60000)
-    
-    // Se for menos de 60 minutos (1 hora), mostra "há x minutos"
-    if (minutes < 60) {
-      if (minutes < 1) return 'now'
-      if (minutes === 1) return '1 minute ago'
-      return `${minutes} minutes ago`
-    }
-    
-    // Se for mais de 1 hora, mostra a data e horário formatados
-    return eventDate.toLocaleString('pt-BR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    })
-  }
-
-  const handleLogout = () => {
-    sessionStorage.removeItem('apiKey')
-    window.location.href = '/login'
-  }
-
-  const getSeverityColor = (severity: string) => {
-     const s = severity?.toUpperCase()
-     switch (s) {
-       case 'HIGH':
-         return 'text-red-500 border-red-500/30'
-       case 'MEDIUM':
-         return 'text-yellow-500 border-yellow-500/30'
-       case 'LOW':
-         return 'text-[#00A878] border-[#00A878]/30'
-       default:
-         return 'text-primary border-primary/30'
-     }
-   }
-
-  const getResultColor = (result: string) => {
-    return result === 'SUCCESS' ? 'text-[#00A878]' : 'text-red-500'
-  }
-
-  if (isLoading) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-black text-primary flex-col gap-4">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary jewel-glow"></div>
-        <p className="text-xs font-mono tracking-widest uppercase opacity-50">Carregando Fluxo de Eventos...</p>
-      </div>
-    )
-  }
-
-  if (isError) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-black text-error flex-col gap-6 p-6 text-center">
-        <div className="w-16 h-16 rounded-full bg-error/10 flex items-center justify-center border border-error/20">
-          <span className="material-symbols-outlined text-3xl">error</span>
-        </div>
-        <div className="space-y-2">
-          <h2 className="text-xl font-headline font-bold">Falha na Conexão</h2>
-          <p className="text-sm text-on-surface-variant max-w-md">
-            Não foi possível estabelecer conexão com o serviço de eventos. 
-            Verifique se a API está rodando ou tente novamente mais tarde.
-          </p>
-          {error instanceof Error && (
-            <p className="text-[10px] font-mono opacity-50 mt-4">Erro: {error.message}</p>
-          )}
-        </div>
-        <button 
-          onClick={() => window.location.reload()}
-          className="px-6 py-2 bg-surface-container-high hover:bg-surface-container text-on-surface text-sm font-bold rounded-md transition-all"
+  const filtersSlot = (
+    <div className="grid grid-cols-2 gap-3">
+      <label className="flex flex-col gap-1">
+        <span className="text-[10px] uppercase tracking-[0.12em] text-white/60 font-black">
+          Criticality
+        </span>
+        <select
+          className="bg-surface-container-lowest border border-outline-variant/20 text-on-surface px-3 py-2 rounded-md text-xs font-mono"
+          value={search.criticality ?? ''}
+          onChange={(e) => {
+            const criticality = e.target.value
+              ? (e.target.value as 'LOW' | 'MEDIUM' | 'HIGH')
+              : undefined
+            navigate({
+              search: (prev) => ({
+                ...prev,
+                criticality,
+              }),
+              replace: true,
+            })
+          }}
         >
-          Tentar Novamente
-        </button>
-      </div>
-    )
-  }
+          <option value="">Any</option>
+          <option value="LOW">LOW</option>
+          <option value="MEDIUM">MEDIUM</option>
+          <option value="HIGH">HIGH</option>
+        </select>
+      </label>
+
+      <label className="flex flex-col gap-1">
+        <span className="text-[10px] uppercase tracking-[0.12em] text-white/60 font-black">
+          Result
+        </span>
+        <select
+          className="bg-surface-container-lowest border border-outline-variant/20 text-on-surface px-3 py-2 rounded-md text-xs font-mono"
+          value={search.result ?? ''}
+          onChange={(e) => {
+            const result = e.target.value
+              ? (e.target.value as 'SUCCESS' | 'FAILURE')
+              : undefined
+            navigate({
+              search: (prev) => ({
+                ...prev,
+                result,
+              }),
+              replace: true,
+            })
+          }}
+        >
+          <option value="">Any</option>
+          <option value="SUCCESS">SUCCESS</option>
+          <option value="FAILURE">FAILURE</option>
+        </select>
+      </label>
+
+      <label className="flex flex-col gap-1">
+        <span className="text-[10px] uppercase tracking-[0.12em] text-white/60 font-black">
+          Client ID
+        </span>
+        <input
+          className="bg-surface-container-lowest border border-outline-variant/20 text-on-surface px-3 py-2 rounded-md text-xs font-mono"
+          value={search.clientId ?? ''}
+          onChange={(e) => {
+            const value = e.target.value
+            const parsed = value ? Number(value) : undefined
+            navigate({
+              search: (prev) => ({
+                ...prev,
+                clientId: parsed !== undefined && Number.isFinite(parsed) ? parsed : undefined,
+              }),
+              replace: true,
+            })
+          }}
+          inputMode="numeric"
+        />
+      </label>
+
+      <label className="flex flex-col gap-1">
+        <span className="text-[10px] uppercase tracking-[0.12em] text-white/60 font-black">
+          User ID
+        </span>
+        <input
+          className="bg-surface-container-lowest border border-outline-variant/20 text-on-surface px-3 py-2 rounded-md text-xs font-mono"
+          value={search.userId ?? ''}
+          onChange={(e) => {
+            const value = e.target.value
+            const parsed = value ? Number(value) : undefined
+            navigate({
+              search: (prev) => ({
+                ...prev,
+                userId: parsed !== undefined && Number.isFinite(parsed) ? parsed : undefined,
+              }),
+              replace: true,
+            })
+          }}
+          inputMode="search"
+        />
+      </label>
+
+      <label className="flex flex-col gap-1 col-span-2">
+        <span className="text-[10px] uppercase tracking-[0.12em] text-white/60 font-black">
+          Event Type
+        </span>
+        <input
+          className="bg-surface-container-lowest border border-outline-variant/20 text-on-surface px-3 py-2 rounded-md text-xs font-mono"
+          value={search.eventType ?? ''}
+          onChange={(e) => {
+            const value = e.target.value
+            navigate({
+              search: (prev) => ({
+                ...prev,
+                eventType: value ? value : undefined,
+              }),
+              replace: true,
+            })
+          }}
+        />
+      </label>
+    </div>
+  )
 
   return (
-    <div className="flex min-h-screen overflow-hidden bg-black text-on-surface font-body">
-      {/* Sidebar Navigation (Events Log) */}
-      <aside className="flex flex-col w-80 bg-surface-container-lowest border-r border-outline-variant/10 h-screen">
-        <div className="p-4 pt-6 border-b border-outline-variant/10">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <div className="text-lg font-black text-white tracking-tight">Events Service</div>
-              <div className="text-[10px] uppercase tracking-[0.2em] text-[#00A878] font-black">Inspect</div>
-            </div>
+    <DashboardLayout
+      sidebar={
+        <EventSidebar
+          events={events}
+          selectedEventId={effectiveSelectedEventId}
+          onSelectEvent={setSelectedEventId}
+          onLogout={async () => {
+            logout()
+            await navigate({ to: '/login' })
+          }}
+          isFetchingNextPage={isFetchingNextPage}
+          listRef={listRef}
+          sentinelRef={sentinelRef}
+          showFilters={showFilters}
+          onToggleFilters={() => setShowFilters((s) => !s)}
+          filtersSlot={filtersSlot}
+        />
+      }
+    >
+      {isError ? (
+        <div className="flex h-full items-center justify-center bg-black text-error flex-col gap-6 p-6 text-center">
+          <div className="w-16 h-16 rounded-full bg-error/10 flex items-center justify-center border border-error/20">
+            <span className="material-symbols-outlined text-3xl">error</span>
           </div>
-          <div className="relative mb-3">
-            <button 
-              className="w-full bg-[#00A878] py-2 rounded-sm text-[10px] uppercase font-black tracking-[0.2em] text-white hover:bg-[#008f66] transition-all flex items-center justify-center gap-2 border border-white/10"
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
-              </svg>
-              FILTERS
-            </button>
+          <div className="space-y-2">
+            <h2 className="text-xl font-headline font-bold">Falha na Conexão</h2>
+            <p className="text-sm text-on-surface-variant max-w-md">
+              Não foi possível estabelecer conexão com o serviço de eventos.
+              Verifique se a API está rodando ou tente novamente mais tarde.
+            </p>
+            {error instanceof Error ? (
+              <p className="text-[10px] font-mono opacity-50 mt-4">Erro: {error.message}</p>
+            ) : null}
           </div>
+          <button
+            onClick={() => window.location.reload()}
+            className="px-6 py-2 bg-surface-container-high hover:bg-surface-container text-on-surface text-sm font-bold rounded-md transition-all"
+            type="button"
+          >
+            Tentar Novamente
+          </button>
         </div>
-
-        {/* Event List */}
-        <div ref={listRef} className="flex-1 overflow-y-auto custom-scrollbar">
-          {eventsArray.map((event) => {
-            const isSelected = effectiveSelectedEventId === event.id
-            
-            return (
-              <div 
-                key={event.id} 
-                onClick={() => setSelectedEventId(event.id)}
-                className={`px-6 py-4 border-b border-white/5 cursor-pointer transition-all hover:bg-[#151515] ${isSelected ? 'bg-[#0F1110] border-l-4 border-l-[#00A878]' : ''}`}
-              >
-                <div className="flex flex-col gap-1">
-                  <div className={`text-[10px] font-bold uppercase tracking-wider ${getResultColor(event.result)}`}>
-                    {event.eventType}
-                  </div>
-                  <div className="text-[10px] text-white/70 font-mono">
-                    client_id: {event.clientId}
-                  </div>
-                  <div className="text-[10px] text-white/30 font-medium">
-                    {getRelativeTime(event.timestamp)}
-                  </div>
-                </div>
-              </div>
-            )
-          })}
-
-          {eventsArray.length === 0 && (
-            <div className="p-8 text-center">
-              <span className="material-symbols-outlined text-secondary/20 text-4xl mb-2">event_busy</span>
-              <p className="text-[10px] text-secondary/40 uppercase font-bold tracking-widest">Nenhum evento encontrado</p>
-            </div>
-          )}
-
-          <div ref={sentinelRef} className="h-8" />
-
-          {isFetchingNextPage && (
-            <div className="px-6 py-4 text-[10px] uppercase tracking-widest text-white/40 flex items-center gap-2">
-              <div className="h-3 w-3 animate-spin rounded-full border-t-2 border-b-2 border-white/30" />
-              Carregando mais...
-            </div>
-          )}
+      ) : isLoading && events.length === 0 ? (
+        <div className="flex h-full items-center justify-center bg-black text-primary flex-col gap-4">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary jewel-glow"></div>
+          <p className="text-xs font-mono tracking-widest uppercase opacity-50">
+            Carregando Fluxo de Eventos...
+          </p>
         </div>
-
-        {/* User Profile / Logout */}
-        <div className="p-4 border-t border-outline-variant/10">
-          <div className="flex items-center gap-3 p-2 rounded-lg bg-[#111] hover:bg-[#151515] transition-colors cursor-pointer" onClick={handleLogout}>
-            <div className="w-8 h-8 rounded-full bg-surface-container-high flex items-center justify-center overflow-hidden">
-              <span className="material-symbols-outlined text-white/50 text-xl">account_circle</span>
-            </div>
-            <div className="overflow-hidden">
-              <p className="text-[10px] font-bold text-white truncate">Log out</p>
-            </div>
-          </div>
+      ) : selectedEvent ? (
+        <EventDetails event={selectedEvent} />
+      ) : (
+        <div className="flex-1 flex items-center justify-center text-secondary/60 font-headline">
+          Selecione um evento para ver os detalhes
         </div>
-      </aside>
-
-      {/* Main Content Area */}
-      <main className="flex-1 flex flex-col h-screen overflow-hidden bg-black">
-        {/* Detail Content */}
-        {selectedEvent ? (
-          <div className="flex-1 overflow-y-auto p-8 font-headline">
-            {/* Selected Event Header */}
-            <div className="mb-8">
-              <div className="flex items-center gap-4 mb-2">
-                <span className={`px-3 py-1 border rounded text-xs font-black tracking-widest ${getResultColor(selectedEvent.result)}`}>
-                  {selectedEvent.result}
-                </span>
-                <h2 className="text-2xl font-bold text-on-surface">{selectedEvent.eventType}</h2>
-              </div>
-              <div className="flex items-center gap-2 text-xs text-secondary/60">
-                <span>Source: <span className="text-on-surface-variant font-mono">{selectedEvent.sourceIp}</span></span>
-                <span className="text-outline-variant">•</span>
-                <span>at {new Date(selectedEvent.timestamp).toLocaleString()}</span>
-              </div>
-            </div>
-
-            {/* Summary Table */}
-            <div className="mb-8 border border-outline-variant/10 rounded-lg overflow-hidden bg-surface-container-lowest">
-              <div className="grid grid-cols-2 border-b border-outline-variant/5 px-6 py-3 items-center hover:bg-surface-container-low transition-colors">
-                <div className="text-xs font-medium text-secondary/70">Correlation ID</div>
-                <div className="text-xs font-mono text-on-surface-variant">{selectedEvent.correlationId || 'N/A'}</div>
-              </div>
-              <div className="grid grid-cols-2 border-b border-outline-variant/5 px-6 py-3 items-center hover:bg-surface-container-low transition-colors">
-                <div className="text-xs font-medium text-secondary/70">Criticality</div>
-                <div className={`text-xs font-mono font-bold ${getSeverityColor(selectedEvent.criticality)}`}>
-                  {selectedEvent.criticality}
-                </div>
-              </div>
-              <div className="grid grid-cols-2 border-b border-outline-variant/5 px-6 py-3 items-center hover:bg-surface-container-low transition-colors">
-                <div className="text-xs font-medium text-secondary/70">User ID</div>
-                <div className="text-xs font-mono text-on-surface-variant">{selectedEvent.userId}</div>
-              </div>
-              <div className="grid grid-cols-2 px-6 py-3 items-center hover:bg-surface-container-low transition-colors">
-                <div className="text-xs font-medium text-secondary/70">Client ID</div>
-                <div className="text-xs font-mono text-on-surface-variant">{selectedEvent.clientId}</div>
-              </div>
-            </div>
-
-            {/* Event Details Section */}
-            {selectedEvent.details && (
-              <div className="mb-8">
-                <h3 className="text-sm font-black text-on-surface uppercase tracking-widest mb-4">Event Details</h3>
-                <div className="bg-[#0a0a0a] rounded-lg p-6 border border-outline-variant/10">
-                  <pre className="font-mono text-sm text-secondary leading-relaxed overflow-x-auto">
-                    {JSON.stringify(selectedEvent.details, null, 2)}
-                  </pre>
-                </div>
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="flex-1 flex items-center justify-center text-secondary/60 font-headline">
-            Selecione um evento para ver os detalhes
-          </div>
-        )}
-      </main>
-    </div>
+      )}
+    </DashboardLayout>
   )
 }

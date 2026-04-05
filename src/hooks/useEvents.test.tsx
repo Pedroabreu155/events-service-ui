@@ -68,7 +68,8 @@ describe('useEvents (infinite)', () => {
 
     expect(apiGetMock).toHaveBeenCalledTimes(2)
     expect(apiGetMock.mock.calls[0]?.[1]?.params?.page).toBe('1')
+    expect(apiGetMock.mock.calls[0]?.[1]?.params?.limit).toBe('10')
     expect(apiGetMock.mock.calls[1]?.[1]?.params?.page).toBe('2')
+    expect(apiGetMock.mock.calls[1]?.[1]?.params?.limit).toBe('10')
   })
 })
-

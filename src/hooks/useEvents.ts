@@ -15,14 +15,25 @@ export function useEvents(filters?: EventFilters) {
     queryKey: ["events", filters],
     initialPageParam: 1,
     queryFn: async ({ pageParam }): Promise<EventsPage> => {
-      const params: Record<string, string> = { page: String(pageParam) };
+      const limit = 10;
+      const params: Record<string, string> = {
+        page: String(pageParam),
+        limit: String(limit),
+      };
+      if (filters?.startDate) params.startDate = filters.startDate;
+      if (filters?.endDate) params.endDate = filters.endDate;
       if (filters?.criticality) params.criticality = filters.criticality;
       if (filters?.result) params.result = filters.result;
-      if (filters?.search) params.search = filters.search;
+      if (filters?.clientId !== undefined)
+        params.clientId = String(filters.clientId);
+      if (filters?.userId !== undefined) params.userId = String(filters.userId);
+      if (filters?.eventType) params.eventType = filters.eventType;
 
-      const response = await api.get<unknown>("/v1/audit/events", { params });
+      const response = await api.get<EventsPage>("/v1/audit/events", {
+        params,
+      });
+
       const parsed = EventsPageSchema.safeParse(response);
-      console.log(parsed);
 
       if (!parsed.success) {
         throw new Error("Resposta inválida do servidor");
