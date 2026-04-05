@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router'
 import { useState } from 'react'
 
 export const Route = createFileRoute('/login')({
@@ -7,9 +7,8 @@ export const Route = createFileRoute('/login')({
 
 function LoginComponent() {
   const [apiKey, setApiKey] = useState('')
-  const [showKey, setShowKey] = useState(false)
+  const showKey = false
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const navigate = useNavigate()
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()

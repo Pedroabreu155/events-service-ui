@@ -24,7 +24,7 @@ declare module '@tanstack/react-router' {
   }
 }
 
-function App() {
+export function App() {
   // Simple check for authentication
   const isAuthenticated = !!sessionStorage.getItem('apiKey')
 

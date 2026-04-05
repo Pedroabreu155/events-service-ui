@@ -1,29 +1,47 @@
-import { z } from 'zod';
+import { z } from "zod";
 
-export const EventSeveritySchema = z.enum(['INFO', 'WARNING', 'ERROR', 'CRITICAL']);
-export type EventSeverity = z.infer<typeof EventSeveritySchema>;
+export const CriticalitySchema = z.enum(["LOW", "MEDIUM", "HIGH"]);
+export type Criticality = z.infer<typeof CriticalitySchema>;
 
-export const EventStatusSchema = z.enum(['PENDING', 'PROCESSED', 'FAILED']);
-export type EventStatus = z.infer<typeof EventStatusSchema>;
+export const ResultSchema = z.enum(["SUCCESS", "FAILURE"]);
+export type Result = z.infer<typeof ResultSchema>;
 
+/**
+ * Formato Oficial dos Eventos (Audit API)
+ *
+ * @example
+ * {
+ *   "timestamp": "2025-10-07T14:00:00Z",
+ *   "userId": 1,
+ *   "clientId": 1,
+ *   "eventType": "USER_LOGIN",
+ *   "sourceIp": "127.0.0.1",
+ *   "criticality": "MEDIUM",
+ *   "result": "SUCCESS",
+ *   "correlationId": "uuid-v4",
+ *   "entityId": "entity-123",
+ *   "details": { "method": "POST", "path": "/api/v1/login" }
+ * }
+ */
 export const EventSchema = z.object({
-  id: z.string().uuid(),
-  title: z.string(),
-  description: z.string().optional(),
-  severity: EventSeveritySchema,
-  status: EventStatusSchema,
-  source: z.string(),
-  payload: z.record(z.any()).optional(),
-  metadata: z.record(z.any()).optional(),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
+  timestamp: z.string().datetime(),
+  userId: z.number(),
+  id: z.number(),
+  clientId: z.number(),
+  eventType: z.string(),
+  sourceIp: z.string(),
+  criticality: CriticalitySchema,
+  result: ResultSchema,
+  correlationId: z.string().optional(),
+  entityId: z.string().optional(),
+  details: z.record(z.any()),
 });
 
 export type Event = z.infer<typeof EventSchema>;
 
 export const EventFiltersSchema = z.object({
-  severity: EventSeveritySchema.optional(),
-  status: EventStatusSchema.optional(),
+  criticality: CriticalitySchema.optional(),
+  result: ResultSchema.optional(),
   search: z.string().optional(),
 });
 

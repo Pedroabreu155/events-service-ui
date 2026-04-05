@@ -1,43 +1,51 @@
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import { api } from "../services/api";
-import { Event, EventFilters } from "../types/event";
+import { z } from "zod";
+import { EventFilters, EventSchema } from "../types/event";
+
+const EventsPageSchema = z.object({
+  events: z.array(EventSchema),
+  total: z.number(),
+});
+
+type EventsPage = z.infer<typeof EventsPageSchema>;
 
 export function useEvents(filters?: EventFilters) {
-  return useQuery({
+  const query = useInfiniteQuery({
     queryKey: ["events", filters],
-    queryFn: async () => {
-      // In a real scenario, we would pass filters as search params
-      const params: Record<string, string> = {};
-      if (filters?.severity) params.severity = filters.severity;
-      if (filters?.status) params.status = filters.status;
+    initialPageParam: 1,
+    queryFn: async ({ pageParam }): Promise<EventsPage> => {
+      const params: Record<string, string> = { page: String(pageParam) };
+      if (filters?.criticality) params.criticality = filters.criticality;
+      if (filters?.result) params.result = filters.result;
       if (filters?.search) params.search = filters.search;
 
-      const response = await api.get<any>("/v1/audit/events", { params });
+      const response = await api.get<unknown>("/v1/audit/events", { params });
+      const parsed = EventsPageSchema.safeParse(response);
+      console.log(parsed);
 
-      // Handle common API patterns (direct array or wrapped in data/events property)
-      if (Array.isArray(response)) return response;
-      if (response && Array.isArray(response.events)) return response.events;
-      if (response && Array.isArray(response.data)) return response.data;
+      if (!parsed.success) {
+        throw new Error("Resposta inválida do servidor");
+      }
 
-      return [];
+      return parsed.data;
     },
-    // Keep data fresh for 30 seconds
+    getNextPageParam: (lastPage, allPages) => {
+      const loaded = allPages.reduce(
+        (acc, page) => acc + page.events.length,
+        0,
+      );
+      if (loaded >= lastPage.total) return undefined;
+      if (lastPage.events.length === 0) return undefined;
+      return allPages.length + 1;
+    },
     staleTime: 30000,
-    // Refetch every 1 minute
-    refetchInterval: 60000,
-    // Disable retries for faster feedback on connection issues
+    refetchInterval: (q) => (q.state.data?.pages.length === 1 ? 60000 : false),
     retry: 0,
   });
-}
 
-export function useEventDetails(id: string) {
-  return useQuery({
-    queryKey: ["events", id],
-    queryFn: async () => {
-      const response = await api.get<any>(`/v1/audit/events/${id}`);
-      // Handle wrapped data if necessary
-      return response?.event || response?.data || response;
-    },
-    enabled: !!id,
-  });
+  const events = query.data?.pages.flatMap((page) => page.events) ?? [];
+  const total = query.data?.pages[0]?.total ?? 0;
+
+  return { ...query, events, total };
 }

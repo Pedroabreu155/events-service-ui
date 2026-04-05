@@ -9,9 +9,9 @@ export interface FetchOptions extends RequestInit {
 
 class ApiError extends Error {
   status: number;
-  data?: any;
+  data?: unknown;
 
-  constructor(status: number, message: string, data?: any) {
+  constructor(status: number, message: string, data?: unknown) {
     super(message);
     this.status = status;
     this.data = data;
@@ -85,13 +85,14 @@ export const api = {
         }
 
         return await response.json();
-      } catch (error: any) {
-        if (error.name === "AbortError") {
+      } catch (error: unknown) {
+        if (error instanceof Error && error.name === "AbortError") {
           throw new Error("Request timeout");
         }
 
         const isNetworkError =
-          error.name === "TypeError" || error.message.includes("network");
+          error instanceof TypeError ||
+          (error instanceof Error && error.message.toLowerCase().includes("network"));
         if (isNetworkError && retries < MAX_RETRIES) {
           console.warn(
             `Tentativa ${retries + 1} falhou (Erro de Rede). Tentando novamente...`,
@@ -112,7 +113,7 @@ export const api = {
     return this.request<T>(endpoint, { ...options, method: "GET" });
   },
 
-  post<T>(endpoint: string, body?: any, options?: FetchOptions) {
+  post<T>(endpoint: string, body?: unknown, options?: FetchOptions) {
     return this.request<T>(endpoint, {
       ...options,
       method: "POST",
@@ -120,7 +121,7 @@ export const api = {
     });
   },
 
-  put<T>(endpoint: string, body?: any, options?: FetchOptions) {
+  put<T>(endpoint: string, body?: unknown, options?: FetchOptions) {
     return this.request<T>(endpoint, {
       ...options,
       method: "PUT",
