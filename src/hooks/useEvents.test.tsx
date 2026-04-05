@@ -72,4 +72,45 @@ describe('useEvents (infinite)', () => {
     expect(apiGetMock.mock.calls[1]?.[1]?.params?.page).toBe('2')
     expect(apiGetMock.mock.calls[1]?.[1]?.params?.limit).toBe('10')
   })
+
+  it('should normalize startDate/endDate to ISO before sending to the API', async () => {
+    const apiGetMock = vi.mocked(api.get)
+
+    apiGetMock.mockResolvedValueOnce({
+      events: [makeEvent(1)],
+      total: 1,
+    })
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    )
+
+    const startDate = '2026-04-05T10:00'
+    const endDate = '2026-04-05T11:00'
+
+    const { result } = renderHook(
+      () =>
+        useEvents({
+          startDate,
+          endDate,
+        }),
+      { wrapper },
+    )
+
+    await waitFor(() => {
+      expect(result.current.events).toHaveLength(1)
+    })
+
+    expect(apiGetMock).toHaveBeenCalledTimes(1)
+    expect(apiGetMock.mock.calls[0]?.[1]?.params?.startDate).toBe(
+      new Date(startDate).toISOString(),
+    )
+    expect(apiGetMock.mock.calls[0]?.[1]?.params?.endDate).toBe(
+      new Date(endDate).toISOString(),
+    )
+  })
 })

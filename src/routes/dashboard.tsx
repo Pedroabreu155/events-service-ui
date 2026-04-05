@@ -1,5 +1,6 @@
 import { createFileRoute, redirect } from '@tanstack/react-router'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { DateTimePopoverField } from '../components/dashboard/DateTimePopoverField'
 import { EventDetails } from '../components/dashboard/EventDetails'
 import { EventSidebar } from '../components/dashboard/EventSidebar'
 import { DashboardLayout } from '../components/layout/DashboardLayout'
@@ -127,6 +128,36 @@ function DashboardComponent() {
 
   const filtersSlot = (
     <div className="grid grid-cols-2 gap-3">
+      <DateTimePopoverField
+        label="Start Date"
+        value={search.startDate}
+        defaultTime={{ hour: 0, minute: 0 }}
+        onChange={(iso) => {
+          navigate({
+            search: (prev) => ({
+              ...prev,
+              startDate: iso,
+            }),
+            replace: true,
+          })
+        }}
+      />
+
+      <DateTimePopoverField
+        label="End Date"
+        value={search.endDate}
+        defaultTime={{ hour: 23, minute: 59 }}
+        onChange={(iso) => {
+          navigate({
+            search: (prev) => ({
+              ...prev,
+              endDate: iso,
+            }),
+            replace: true,
+          })
+        }}
+      />
+
       <label className="flex flex-col gap-1">
         <span className="text-[10px] uppercase tracking-[0.12em] text-white/60 font-black">
           Criticality

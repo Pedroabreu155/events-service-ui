@@ -10,6 +10,13 @@ const EventsPageSchema = z.object({
 
 type EventsPage = z.infer<typeof EventsPageSchema>;
 
+function normalizeDateParam(value?: string) {
+  if (!value) return undefined;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return undefined;
+  return date.toISOString();
+}
+
 export function useEvents(filters?: EventFilters) {
   const query = useInfiniteQuery({
     queryKey: ["events", filters],
@@ -20,8 +27,10 @@ export function useEvents(filters?: EventFilters) {
         page: String(pageParam),
         limit: String(limit),
       };
-      if (filters?.startDate) params.startDate = filters.startDate;
-      if (filters?.endDate) params.endDate = filters.endDate;
+      const startDate = normalizeDateParam(filters?.startDate);
+      const endDate = normalizeDateParam(filters?.endDate);
+      if (startDate) params.startDate = startDate;
+      if (endDate) params.endDate = endDate;
       if (filters?.criticality) params.criticality = filters.criticality;
       if (filters?.result) params.result = filters.result;
       if (filters?.clientId !== undefined)
